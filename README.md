@@ -4,7 +4,7 @@ Unlike onion routing, toralize has no encryption (yet).
 
 Usage: 
 ```bash
-./toralize.sh [-v] [-s num_services] <host> <port>
+./toralize.sh [-v] [-s num_servers] <host> <port>
       -s         specify number of dante servers to open (default is 3)
       -v         verbose
 ```

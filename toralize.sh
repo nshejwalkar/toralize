@@ -34,7 +34,6 @@ log() {
 DEST_IP=$1
 DEST_PORT=$2
 
-# Array to hold open ports for each Dante instance
 PORTS=()
 CONFIG_FILES=()
 PIDS=()
@@ -56,11 +55,10 @@ for i in $(seq 1 $NUM_SERVERS); do
    OPEN_PORT=$(find_open_port)
    PORTS+=($OPEN_PORT)
 
-   # Generate temporary config file for this instance (in /tmp somewhere)
+   # Generate temporary config file for this instance (in /tmp somewhere), and fill generic
    CONFIG_FILE=$(mktemp)
    CONFIG_FILES+=($CONFIG_FILE)
 
-   # fill in the config file for each Dante instance
    cat <<EOF > "$CONFIG_FILE"
 logoutput: stderr
 
@@ -87,22 +85,21 @@ EOF
    sudo danted -f "$CONFIG_FILE" -D
    sleep 1  # Give time for danted to start
 
-   # Get the PID of the main danted process and save it
+   # save pid to kill later
    DANTED_PID=$(pgrep -f "$CONFIG_FILE")
    PIDS+=($DANTED_PID)
    log "Started danted instance $i on port $OPEN_PORT with PID $DANTED_PID"
 done
 
-# Select 3 random ports for the proxy chain
+# 3 random ports for the proxy chain
 RANDOM_PORTS=($(shuf -e "${PORTS[@]}" | head -n 3))
 log "Selected random ports for proxy chain: ${RANDOM_PORTS[@]}"
 
-# Update configurations to route traffic in the chosen chain
+# Update routing in configs for the  chain
 for j in $(seq 0 1); do
    NEXT_PORT=${RANDOM_PORTS[$((j + 1))]}
    CONFIG_FILE="${CONFIG_FILES[$j]}"
    
-   # Update route section in each chosen Dante config file
    cat <<EOF >> "$CONFIG_FILE"
 # Route traffic to the next Dante server in the chain
 route {
@@ -113,24 +110,23 @@ route {
 EOF
 done
 
-# Update toralize.h or set env variable to use first server in the chain
+# Update toralize.h to use first server in the chain
 PROXYPORT=${RANDOM_PORTS[0]}
 sed -i "s/^#define PROXYPORT .*/#define PROXYPORT $PROXYPORT/" toralize.h
 
-# Compile toralize after change
+# compile+run
 log "Running make..."
 make
 
 log "Running toralize with DEST_IP=$DEST_IP and DEST_PORT=$DEST_PORT..."
 ./toralize "$DEST_IP" "$DEST_PORT"
 
-# Once toralize is finished, shut down all danted processes and clean up
+# cleanup
 for PID in "${PIDS[@]}"; do
    log "Shutting down danted process with PID $PID..."
    sudo kill "$PID"
 done
 
-# Remove temporary config files
 for CONFIG_FILE in "${CONFIG_FILES[@]}"; do
    rm -f "$CONFIG_FILE"
 done
